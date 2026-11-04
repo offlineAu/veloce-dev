@@ -34,7 +34,7 @@ Set these variables using `.env.example` as the reference:
 | `BOOKING_COST_LABEL` | Approved cost terms, matching the event. No default free claim is supplied. |
 | `BOOKING_CRON_SECRET` | Separate random secret of at least 32 characters for maintenance. |
 
-Enabled scheduling with incomplete configuration fails clearly. Disabled scheduling needs no Cal credentials. Restart the development server after Prisma generation/migrations, and rebuild/restart when enabling scheduling so the production CSP includes the provider origins.
+When enabled scheduling has missing credentials, invalid numeric IDs/duration, missing meeting terms, or a short maintenance secret, the public page offers meeting requests instead. Server logs list the missing or invalid variable names without their values. Booking APIs still reject incomplete configuration. Disabled scheduling needs no Cal credentials. Restart the development server after Prisma generation/migrations, and rebuild/restart when enabling scheduling so the production CSP includes the provider origins.
 
 ## Database and recovery
 
