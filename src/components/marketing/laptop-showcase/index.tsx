@@ -189,7 +189,7 @@ export function LaptopShowcase({ items }: { items: ShowcaseItem[] }) {
     <div data-laptop-showcase className="flex min-w-0 flex-col gap-5">
       <div
         ref={stage}
-        className="relative aspect-[4/3] lg:aspect-[6/5]"
+        className="relative aspect-[3/2] lg:aspect-[6/5]"
         onPointerEnter={() => { hovering.current = true; store.set({ holding: true }); }}
         onPointerMove={point}
         onPointerLeave={() => { hovering.current = false; busRef.current.pointer = { x: 0, y: 0 }; busRef.current.invalidate?.(); store.set({ holding: false, cursor: null }); }}

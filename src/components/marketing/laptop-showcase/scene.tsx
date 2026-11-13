@@ -14,10 +14,12 @@ import type { Bus, ShowStore, ShowcaseItem } from "./store";
  * Units: the base is 3 wide. The lid rotates about the hinge from 0 (closed) to OPEN.
  */
 const BASE = { w: 3, h: 0.085, d: 2.06 };
-const LID = { w: 3, h: 0.05, d: 2.02 };
+const LID = { w: 3, h: 0.04, d: 2.02 };
 const OPEN = 1.9; // ~109deg
 const SCREEN = { w: 2.82, z: 1.04 };
 const ALU = { color: "#e3e5e8", metalness: 0.92, roughness: 0.38 } as const;
+/** The lid's edge: bead-blasted, so it catches the studio light softly instead of as a bright frame round the screen. */
+const LID_ALU = { color: "#c9ccd1", metalness: 0.85, roughness: 0.5 } as const;
 
 /** Key rows in units of one key width; every row is 14.5 wide. Ids are what typing presses. */
 const ROWS: [id: string, width: number, legend: string][][] = [
@@ -368,12 +370,12 @@ function Laptop({ store, busRef, items, ...props }: { store: ShowStore; busRef: 
       {/* Lid, pivoting at the hinge; modelled closed, display facing down. */}
       <group ref={lid} position={[0, BASE.h + 0.004, -BASE.d / 2 + 0.03]}>
         {/* Radius stays under half the thickness, or RoundedBox bulges past its faces and hides the glass. */}
-        <RoundedBox args={[LID.w, LID.h, LID.d]} radius={0.022} smoothness={5} position={[0, LID.h / 2, LID.d / 2]} castShadow>
-          <meshPhysicalMaterial {...ALU} clearcoat={0.2} />
+        <RoundedBox args={[LID.w, LID.h, LID.d]} radius={0.018} smoothness={5} position={[0, LID.h / 2, LID.d / 2]} castShadow>
+          <meshStandardMaterial {...LID_ALU} />
         </RoundedBox>
         <LogoMark />
         <mesh position={[0, -0.0008, LID.d / 2]} rotation={[Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[LID.w - 0.05, LID.d - 0.05]} />
+          <planeGeometry args={[LID.w - 0.03, LID.d - 0.03]} />
           <meshPhysicalMaterial color="#060607" roughness={0.12} metalness={0.2} clearcoat={1} />
         </mesh>
         <mesh position={[0, -0.0016, LID.d - 0.06]} rotation={[Math.PI / 2, 0, 0]}>
@@ -436,9 +438,12 @@ function Desk({ store, busRef, items, rise: rises }: { store: ShowStore; busRef:
 function Rig() {
   const { camera, size } = useThree();
   useEffect(() => {
-    const narrow = size.width / size.height < 1.15;
-    camera.position.set(0.15, narrow ? 3.1 : 2.8, narrow ? 8.4 : 7.3);
-    camera.lookAt(0.15, 0.62, 0);
+    const aspect = size.width / size.height;
+    const narrow = aspect < 1.15;
+    // Aimed at the pair's middle, so it sits centred with no gap below; wide stages (phones get a 3:2 one) come closer.
+    const wide = aspect >= 1.4;
+    camera.position.set(0.15, narrow ? 3.1 : 2.8, narrow ? 8.4 : wide ? 6.6 : 7.3);
+    camera.lookAt(0.15, narrow ? 0.62 : 0.82, 0);
     camera.updateProjectionMatrix();
   }, [camera, size.width, size.height]);
   return null;
