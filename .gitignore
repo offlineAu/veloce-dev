@@ -1,8 +1,6 @@
 node_modules
 .next
-.env
-.env.local
-.env.*
+.env*
 !.env.example
 !.env.production.example
 .dev-db
@@ -15,7 +13,6 @@ playwright-report
 .next-dev.log
 .next-start.log
 .vercel
-.env*
 
 # Never publish original portfolio assets or private case manifests
 .private-assets/
@@ -31,3 +28,6 @@ artifacts/
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 skills-lock.json
+
+# Local Vercel environment import (contains secrets)
+VERCEL-ENV-IMPORT.txt
