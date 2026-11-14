@@ -73,6 +73,33 @@ test.describe("site builder", () => {
     await expect(canvas(page).getByRole("heading", { name: "A clear, confident heading" })).toBeVisible({ timeout: 30_000 });
   });
 
+  test("typing in a page field uses native undo", async ({ page }) => {
+    await openBlank(page);
+    await page.getByRole("button", { name: "Add page" }).click();
+    const title = page.getByLabel("Page name");
+    await title.pressSequentially("About");
+    await title.press("ControlOrMeta+z");
+    await expect(title).toHaveValue("");
+  });
+
+  test("page editing history survives switching pages", async ({ page }) => {
+    await openBlank(page);
+    await dragBlock(page, "Heading");
+    const heading = canvas(page).getByRole("heading", { name: "A clear, confident heading" });
+    await expect(heading).toBeVisible();
+    // Puck groups edits before recording a history entry.
+    await page.waitForTimeout(1000);
+    await page.getByRole("button", { name: "Add page" }).click();
+    await page.getByLabel("Page name").fill("About");
+    await page.getByRole("dialog").getByRole("button", { name: "Add page" }).click();
+    await page.getByRole("button", { name: /Home/ }).first().click();
+    await expect(heading).toBeVisible();
+    await page.keyboard.press("Control+z");
+    await expect(heading).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+z");
+    await expect(heading).toBeVisible();
+  });
+
   test("a saved draft is never replaced by a template link without asking", async ({ page }) => {
     await openBlank(page);
     await dragBlock(page, "Heading");
