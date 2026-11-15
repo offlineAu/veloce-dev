@@ -1,9 +1,9 @@
 "use client";
 
 import "@puckeditor/core/no-external.css";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ActionBar, Puck, type Overrides } from "@puckeditor/core";
+import { ActionBar, Puck, type InitialHistory, type Overrides } from "@puckeditor/core";
 import { toast } from "sonner";
 import { ArrowLeft, Bookmark, Cable, Code2, Download, Eye, FileText, Images, LayoutTemplate, Palette, Pencil, Send, Shapes } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,22 @@ import { findSection, type TemplateListing } from "@/lib/builder/template-packag
 
 type Panel = EditorPanel;
 type PreviewMode = "edit" | "interactive";
+
+type PageHistory = { data: PageData; history: InitialHistory };
+
+/** Keep Puck's page-local history when switching pages, without restoring stale site-wide settings. */
+function RememberPageHistory({ pageId, cache }: { pageId: string; cache: Map<string, PageHistory> }) {
+  const history = usePuck((s) => s.history);
+  const data = usePuck((s) => s.appState.data);
+  useLayoutEffect(() => {
+    if (history.histories.length && JSON.stringify(history.histories[history.index]?.state.data) === JSON.stringify(data)) {
+      cache.set(pageId, { data: data as PageData, history: { histories: history.histories, index: history.index, appendData: false } as InitialHistory });
+    } else {
+      cache.delete(pageId);
+    }
+  }, [cache, pageId, data, history.histories, history.index]);
+  return null;
+}
 
 export interface BuilderAppProps {
   companyName: string;
@@ -152,6 +168,7 @@ export default function BuilderApp({ companyName, contactEmail, refToken, reques
   const [pendingTemplate, setPendingTemplate] = useState<string | undefined>(boot.asked ? requestedTemplate : undefined);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("edit");
   const latest = useRef<Session | null>(initial);
+  const [pageHistories] = useState(() => new Map<string, PageHistory>());
   const saveTimer = useRef<number | undefined>(undefined);
   const { template, settled: templateSettled } = useTemplateStatus(session?.doc.templateRef);
   const sessionRef = useRef(session);
@@ -272,7 +289,7 @@ export default function BuilderApp({ companyName, contactEmail, refToken, reques
     [commit, template, review],
   );
 
-  const replaceSite = useCallback((doc: SiteDoc, templateId?: string) => commit({ doc, activeId: doc.pages[0]!.id, templateId }), [commit]);
+  const replaceSite = useCallback((doc: SiteDoc, templateId?: string) => { pageHistories.clear(); commit({ doc, activeId: doc.pages[0]!.id, templateId }); }, [commit, pageHistories]);
 
   // A site made from its template before the template gained interactions gets them now (template-upgrade.ts), once
   // per template loaded; the visitor's own changes stay.
@@ -352,11 +369,12 @@ export default function BuilderApp({ companyName, contactEmail, refToken, reques
         <>
           {children}
           <EditorExtras />
+          <RememberPageHistory pageId={latest.current!.activeId} cache={pageHistories} />
           <MobileActions onOpen={setPanel} onPreview={setPreviewMode} getDoc={() => latest.current!.doc} />
         </>
       ),
     }),
-    [],
+    [pageHistories],
   );
 
   // The editor mounts once, with the template's sections in its block list: remounting it as the template arrived
@@ -384,6 +402,9 @@ export default function BuilderApp({ companyName, contactEmail, refToken, reques
   if (!session || !templateSettled) return <div className="grid h-dvh place-items-center text-muted">Opening the builder…</div>;
   // `session` is refreshed from `latest` on every commit, so it holds the current data whenever the editor remounts.
   const active = session.doc.pages.find((p) => p.id === session.activeId) ?? session.doc.pages[0]!;
+  const savedHistory = pageHistories.get(active.id);
+  // Another page may have changed the shared theme. Never restore an older copy of the page in that case.
+  const initialHistory = savedHistory && JSON.stringify(savedHistory.data) === JSON.stringify(active.data) ? savedHistory.history : undefined;
 
   return (
     <InquiryProvider companyName={companyName} contactEmail={contactEmail} refToken={refToken} getSiteDraft={getSiteDraft}>
@@ -408,6 +429,7 @@ export default function BuilderApp({ companyName, contactEmail, refToken, reques
                 headerPath={active.path}
                 height="100%"
                 iframe={IFRAME}
+                initialHistory={initialHistory}
                 viewports={VIEWPORTS}
                 plugins={PLUGINS}
               />

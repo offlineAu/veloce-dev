@@ -73,6 +73,33 @@ test.describe("site builder", () => {
     await expect(canvas(page).getByRole("heading", { name: "A clear, confident heading" })).toBeVisible({ timeout: 30_000 });
   });
 
+  test("typing in a page field uses native undo", async ({ page }) => {
+    await openBlank(page);
+    await page.getByRole("button", { name: "Add page" }).click();
+    const title = page.getByLabel("Page name");
+    await title.pressSequentially("About");
+    await title.press("ControlOrMeta+z");
+    await expect(title).toHaveValue("");
+  });
+
+  test("page editing history survives switching pages", async ({ page }) => {
+    await openBlank(page);
+    await dragBlock(page, "Heading");
+    const heading = canvas(page).getByRole("heading", { name: "A clear, confident heading" });
+    await expect(heading).toBeVisible();
+    // Puck groups edits before recording a history entry.
+    await page.waitForTimeout(1000);
+    await page.getByRole("button", { name: "Add page" }).click();
+    await page.getByLabel("Page name").fill("About");
+    await page.getByRole("dialog").getByRole("button", { name: "Add page" }).click();
+    await page.getByRole("button", { name: /Home/ }).first().click();
+    await expect(heading).toBeVisible();
+    await page.keyboard.press("Control+z");
+    await expect(heading).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+z");
+    await expect(heading).toBeVisible();
+  });
+
   test("a saved draft is never replaced by a template link without asking", async ({ page }) => {
     await openBlank(page);
     await dragBlock(page, "Heading");
@@ -328,6 +355,30 @@ test.describe("site builder", () => {
     await device("Phone");
     await page.getByRole("button", { name: "Reset" }).filter({ visible: true }).first().click();
     await expect.poll(size).toBe("128px");
+  });
+
+  test("hover state: a hover colour shows on the canvas while editing it, and the normal look stays", async ({ page }) => {
+    await page.goto("/build?template=noir-needle");
+    const heading = onPage(page, "Selected Permanent Archives");
+    await heading.click({ timeout: 30_000 });
+    const color = () => heading.evaluate((e) => getComputedStyle(e).color);
+    const state = (name: string) => page.getByRole("radiogroup", { name: "State" }).filter({ visible: true }).first().getByRole("radio", { name: new RegExp(`^${name}`) }).click();
+    const normal = await color();
+
+    await state("On hover");
+    const pick = normal === "rgb(0, 0, 0)" ? "White" : "Black";
+    const wanted = pick === "White" ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
+    await page.getByRole("radiogroup", { name: "Text colour" }).filter({ visible: true }).first().getByRole("radio", { name: pick }).click();
+    // The canvas shows the hover look while it's being edited…
+    await expect.poll(color).toBe(wanted);
+    // …and the normal look once back on Normal, with a dot marking the hover look.
+    await state("Normal");
+    await expect.poll(color).toBe(normal);
+    await expect(page.getByLabel("(has a hover look)").filter({ visible: true })).toBeVisible();
+    // A real pointer over it shows the hover look too.
+    await page.mouse.move(0, 0);
+    await heading.hover();
+    await expect.poll(color).toBe(wanted);
   });
 
   test("shortcuts: duplicate, copy to another page and paste, and the shortcut list", async ({ page }) => {

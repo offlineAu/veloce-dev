@@ -154,11 +154,19 @@ export function EditorShortcuts() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || inField(e.target)) return;
-      // In text on the canvas, typing, pasting text and copying selected words stay the browser's.
+      if (e.defaultPrevented) return;
+      // Puck listens at document level even while a field has focus. Keep native text undo
+      // by preventing that listener from seeing the shortcut without cancelling its default.
       const text = inText(e.target);
+      const field = inField(e.target);
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      if ((field || text) && mod && !e.altKey && (key === "z" || key === "y")) {
+        e.stopPropagation();
+        return;
+      }
+      if (field) return;
+      // In text on the canvas, typing, pasting text and copying selected words stay the browser's.
       const run = (fn: () => unknown) => {
         e.preventDefault();
         e.stopPropagation();

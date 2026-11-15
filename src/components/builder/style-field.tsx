@@ -2,12 +2,13 @@
 
 import { useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Field } from "@puckeditor/core";
-import { deviceFor, PER_DEVICE, readStyle, scalesFromCss, showClasses, storeClasses, textClassesOf, writeStyle, type Device, type Scales, type StyleValues } from "@/lib/builder/class-groups";
+import { deviceFor, hasHover, PER_DEVICE, readHover, readStyle, scalesFromCss, showClasses, storeClasses, textClassesOf, writeHover, writeStyle, type Device, type HoverKey, type HoverValues, type Scales, type StyleValues } from "@/lib/builder/class-groups";
 import { normalizeTheme, type ThemeTokens } from "@/lib/builder/theme";
 import { siteThemeCss } from "@/lib/builder/theme-vars";
 import { usePuck } from "./editor-hooks";
 import { EditHtmlButton } from "./html-editor-dialog";
 import { useFreeMode } from "./free-canvas";
+import { useForceHover } from "./hover-preview";
 import { colorVar, styleId, textStyleClasses, type SiteStyles } from "@/lib/builder/site-styles";
 import { TemplateContext } from "./template-registry";
 
@@ -18,6 +19,9 @@ import { TemplateContext } from "./template-registry";
  *
  * Most controls edit the device shown on the canvas (phone, tablet or desktop; see class-groups.ts): a desktop change
  * reaches smaller devices unless they have their own value, which the control marks with a way back ("Reset").
+ *
+ * "On hover" switches the colour and look controls to the piece's hover state (class-groups.ts), the same on every
+ * screen, and shows that look on the canvas while it's chosen (hover-preview.ts).
  */
 
 export type StyleControl = "layout" | "spacing" | "size" | "colours" | "text" | "look" | "position" | "visibility";
@@ -108,10 +112,22 @@ export function StyleField({ value, onChange, readOnly, controls, piece }: { val
   const own = (key: keyof StyleValues): Own => (up && perDevice(key) && v[key] !== up[key] ? { device, reset: () => set(key, up[key] as never) } : undefined);
   const advanced = useAdvanced();
   const has = (c: StyleControl) => controls.includes(c);
+  // The hover state is offered to pieces with colour or look controls, and is per piece: selecting another starts
+  // on Normal again.
+  const selectedId = selected ? String(selected.props.id) : null;
+  const canHover = !!piece && (has("colours") || has("look"));
+  const [hoverFor, setHoverFor] = useState<string | null>(null);
+  const hovering = canHover && !!selectedId && hoverFor === selectedId;
+  useForceHover(hovering ? selectedId : null);
   // Groups appear in a fixed order; the piece's most relevant one (listed first) starts open.
 
   return (
     <div className="flex flex-col gap-1 text-sm">
+      {canHover ? <StateBar hovering={hovering} marked={hasHover(value, scales)} onChange={(on) => setHoverFor(on ? selectedId : null)} /> : null}
+      {hovering ? (
+        <HoverControls value={value} scales={scales} onChange={onChange} readOnly={readOnly} colours={has("colours")} look={has("look")} bordered={!!v.borderWidth && v.borderWidth !== "0"} />
+      ) : (
+        <>
       <DeviceBar device={device} />
       <fieldset disabled={readOnly} className="flex flex-col gap-1">
         <legend className="sr-only">Style</legend>
@@ -269,6 +285,8 @@ export function StyleField({ value, onChange, readOnly, controls, piece }: { val
           </Group>
         ) : null}
       </fieldset>
+        </>
+      )}
 
       <AdvancedToggle />
       {advanced ? (
@@ -285,6 +303,59 @@ export function StyleField({ value, onChange, readOnly, controls, piece }: { val
 function stack(z: string | undefined, by: number): string | undefined {
   const next = Math.max(-10, Math.min(50, (Number(z) || 0) + by));
   return next === 0 ? undefined : String(next);
+}
+
+/** Normal or hover: which state of the piece the panel edits. A dot marks a piece that already has a hover look. */
+function StateBar({ hovering, marked, onChange }: { hovering: boolean; marked: boolean; onChange: (hover: boolean) => void }) {
+  return (
+    <div role="radiogroup" aria-label="State" className="mb-1 flex items-center gap-1">
+      <span className="mr-1 text-xs font-semibold">State</span>
+      <button type="button" role="radio" aria-checked={!hovering} onClick={() => onChange(false)} className="rounded border px-2 py-0.5 text-xs aria-checked:border-current aria-checked:bg-black aria-checked:text-white">
+        Normal
+      </button>
+      <button type="button" role="radio" aria-checked={hovering} onClick={() => onChange(true)} className="flex items-center gap-1 rounded border px-2 py-0.5 text-xs aria-checked:border-current aria-checked:bg-black aria-checked:text-white">
+        On hover
+        {marked ? <span aria-label="(has a hover look)" className="size-1.5 rounded-full bg-blue-600" /> : null}
+      </button>
+    </div>
+  );
+}
+
+const MOVES: [string, string][] = [["lift", "Lift up"], ["grow", "Grow"], ["shrink", "Shrink"]];
+
+/** The hover look: colours, border colour, shadow, see-through and a small movement. "Design default" means no change on hover. */
+function HoverControls({ value, scales, onChange, readOnly, colours, look, bordered }: { value: string; scales: Scales; onChange: (v: string) => void; readOnly?: boolean; colours: boolean; look: boolean; bordered: boolean }) {
+  const h = readHover(value, scales);
+  const set = <K extends HoverKey>(key: K, next: HoverValues[K]) => onChange(writeHover(value, scales, key, next));
+  return (
+    <fieldset disabled={readOnly} className="flex flex-col gap-1">
+      <legend className="sr-only">On hover</legend>
+      <p className="mb-1 rounded bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
+        How it looks when the pointer is over it, on every screen with a mouse or trackpad. The canvas is showing this look now.
+      </p>
+      {colours ? (
+        <Group title="Colours" open>
+          <Swatches label="Background" value={h.bg} scales={scales} onChange={(c) => set("bg", c)} defaultLabel="No change" />
+          <Swatches label="Text colour" value={h.color} scales={scales} onChange={(c) => set("color", c)} defaultLabel="No change" />
+        </Group>
+      ) : null}
+      {look ? (
+        <Group title="Border and effects" open>
+          {bordered ? <Swatches label="Border colour" value={h.borderColor} scales={scales} onChange={(c) => set("borderColor", c)} defaultLabel="No change" /> : null}
+          <Select label="Shadow" value={h.shadow} options={SHADOWS} onChange={(s) => set("shadow", s)} emptyLabel="No change" />
+          <Select label="See-through" value={h.opacity} options={[["100", "Solid"], ["90", "90%"], ["75", "75%"], ["50", "Half"]]} onChange={(o) => set("opacity", o)} emptyLabel="No change" />
+        </Group>
+      ) : null}
+      <Group title="Movement" open>
+        <Segmented
+          label="Move"
+          value={h.move ?? ""}
+          options={[["", "None"], ...MOVES, ...(h.move === "custom" ? [["custom", "From the design"] as [string, string]] : [])]}
+          onChange={(m) => m !== "custom" && set("move", (m || undefined) as HoverValues["move"])}
+        />
+      </Group>
+    </fieldset>
+  );
 }
 
 /** Which device the panel edits; switching also switches the canvas. */
@@ -411,16 +482,16 @@ function Segmented<T extends string>({ label, value, options, onChange, own }: {
   );
 }
 
-function Swatches({ label, value, scales, onChange, own }: { label: string; value: string | undefined; scales: Scales; onChange: (v: string | undefined) => void; own?: Own }) {
+function Swatches({ label, value, scales, onChange, own, defaultLabel = "Design default" }: { label: string; value: string | undefined; scales: Scales; onChange: (v: string | undefined) => void; own?: Own; defaultLabel?: string }) {
   const colors = [...scales.colors, { name: "white", value: "#fff" }, { name: "black", value: "#000" }];
   const base = value?.replace(/\/.*$/, "");
   return (
     <div role="radiogroup" aria-label={label} className="flex flex-col gap-1">
       <span aria-hidden>{label}</span>
       <div className="flex flex-wrap gap-1.5">
-        <button type="button" role="radio" aria-checked={!value} onClick={() => onChange(undefined)} title="Design default" className="grid size-7 place-items-center rounded-full border text-[10px] aria-checked:ring-2 aria-checked:ring-current">
+        <button type="button" role="radio" aria-checked={!value} onClick={() => onChange(undefined)} title={defaultLabel} className="grid size-7 place-items-center rounded-full border text-[10px] aria-checked:ring-2 aria-checked:ring-current">
           <span aria-hidden>—</span>
-          <span className="sr-only">Design default</span>
+          <span className="sr-only">{defaultLabel}</span>
         </button>
         {colors.map((c) => (
           <button

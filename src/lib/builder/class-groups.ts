@@ -509,6 +509,79 @@ function writeLayout(className: string, g: ReturnType<typeof groupMatchers>, v: 
 }
 
 /* ------------------------------------------------------------------------------------------------------------------
+ * The hover state: how a piece looks under the pointer. Stored as `hover:` classes, the same on every screen
+ * (Tailwind applies them only where a pointer can hover, so touch screens keep the normal look). Classes with other
+ * variants besides `hover` (md:hover:, group-hover:) belong to the design and are kept.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+export type Lift = "lift" | "grow" | "shrink";
+export interface HoverValues {
+  bg?: string;
+  color?: string;
+  borderColor?: string;
+  shadow?: string;
+  opacity?: string;
+  /** How it moves: rises a little, grows or shrinks. "custom" when the design moves it some other way. */
+  move?: Lift | "custom";
+}
+export type HoverKey = keyof HoverValues;
+export const HOVER_KEYS: HoverKey[] = ["bg", "color", "borderColor", "shadow", "opacity", "move"];
+
+const LIFTS: Record<Lift, string> = { lift: "-translate-y-1", grow: "scale-105", shrink: "scale-95" };
+const MOVE = (u: string) => /^-?translate-y-/.test(u) || /^scale-/.test(u);
+const TRANSITION = /^(transition|duration-|ease-)/;
+
+function hoverMatcher(s: Scales, key: HoverKey): Matcher {
+  const g = groupMatchers(s);
+  return key === "move" ? MOVE : g[key];
+}
+
+/** The hover classes of one group (exactly `hover:`, no other variants). */
+const hoverOf = (className: string, m: Matcher) =>
+  tokens(className).map(parseClass).filter((p): p is ParsedClass => !!p && p.variants.length === 1 && p.variants[0] === "hover" && test(m, p.utility));
+
+/** What each hover control shows. */
+export function readHover(className: string, s: Scales): HoverValues {
+  const last = (key: HoverKey) => hoverOf(className, hoverMatcher(s, key)).at(-1)?.utility;
+  const shadow = last("shadow");
+  const move = last("move");
+  return {
+    bg: suffix(last("bg"), "bg-"),
+    color: suffix(last("color"), "text-"),
+    borderColor: suffix(last("borderColor"), "border-"),
+    shadow: shadow ? (shadow === "shadow" ? "DEFAULT" : shadow.slice(7)) : undefined,
+    opacity: suffix(last("opacity"), "opacity-"),
+    move: move ? ((Object.entries(LIFTS).find(([, u]) => u === move)?.[0] as Lift | undefined) ?? "custom") : undefined,
+  };
+}
+
+/** Whether a piece has any hover look the panel shows. */
+export const hasHover = (className: string, s: Scales) => Object.values(readHover(className, s)).some((v) => v !== undefined);
+
+/**
+ * Sets one hover control (undefined clears it), keeping every other class. The first hover look also gets a short
+ * transition, unless the piece already has one, so the change eases in rather than snapping.
+ */
+export function writeHover<K extends HoverKey>(className: string, s: Scales, key: K, value: HoverValues[K]): string {
+  // "custom" is how the design moves it already: nothing to write.
+  if (value === "custom") return className;
+  const drop = new Set(hoverOf(className, hoverMatcher(s, key)).map((p) => p.raw));
+  const kept = tokens(className).filter((t) => !drop.has(t));
+  let utility: string | undefined;
+  if (value !== undefined && value !== "") {
+    if (key === "move") utility = LIFTS[value as Lift];
+    else if (key === "shadow") utility = value === "DEFAULT" ? "shadow" : `shadow-${value}`;
+    else utility = { bg: "bg-", color: "text-", borderColor: "border-", opacity: "opacity-" }[key as "bg" | "color" | "borderColor" | "opacity"] + value;
+  }
+  if (!utility) return join(kept);
+  const eased = kept.some((t) => {
+    const p = parseClass(t);
+    return !!p && !p.variants.length && TRANSITION.test(p.utility);
+  });
+  return join([...kept, `${CLASS_PREFIX}hover:${utility}`, ...(eased ? [] : [`${CLASS_PREFIX}transition`])]);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
  * The raw class list (Advanced): shown without the prefix, written back with it.
  * ---------------------------------------------------------------------------------------------------------------- */
 
