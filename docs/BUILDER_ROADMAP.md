@@ -307,3 +307,22 @@ Limits:
 - The review stack has no "throw" animation; it moves with a transition.
 - The live upload uses only the generic rules; hints (for what can't be read from markup and CSS, like the Kestrel review stack or job-list hover) are for the CLI.
 
+
+## Phase 7: Hover states (Wix/Webflow) (done)
+
+**Editing a hover look.** The Style panel of a design piece with colour or look controls has a **State** switch: Normal or On hover.
+
+- **On hover offers:** background, text colour, border colour (when it has a border), shadow, see-through, and a movement (lift up, grow, shrink). "No change" leaves that part as it normally is.
+- **Stored as** `vt:hover:` classes, the same on every screen. Tailwind applies them only where a pointer can hover, so touch screens keep the normal look.
+- **A smooth change.** The first hover look adds `vt:transition`, unless the piece already has a transition.
+- **The design's own hover rules stay.** Classes with other variants (`md:hover:`, `group-hover:`) are kept, and movement the panel doesn't offer shows as "From the design".
+- **Marked.** A dot on "On hover" shows a piece already has a hover look.
+- Code: `readHover`, `writeHover` and `hasHover` in `src/lib/builder/class-groups.ts`; the panel is `style-field.tsx`.
+
+**Seeing it on the canvas.** While On hover is chosen, the selected piece shows its hover look without the pointer on it, like a browser's developer tools forcing `:hover` (`src/components/builder/hover-preview.ts`).
+
+- Every `:hover` rule in the canvas's stylesheets gets a copy for `[data-vt-force-hover]`, and that attribute goes on the selected piece. Stylesheets that arrive later (CSS for classes just added) are copied as they load.
+- The design's own hover rules show too, including `.group:hover .child` ones.
+- It's editor-only: the attribute and copies never reach a saved design.
+
+**Testing note.** The template-based builder tests use `noir-needle`, a draft template that a production build hides. Run them against `next dev` (`E2E_BASE_URL=http://localhost:3100` with `next dev -p 3100`).
